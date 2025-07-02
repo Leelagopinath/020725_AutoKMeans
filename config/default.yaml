@@ -1,0 +1,14 @@
+logging:
+  level: INFO
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  
+clustering:
+  default_metric: Euclidean
+  max_iterations: 100
+  metric_params:
+    Mahalanobis:
+      use_pseudo_inverse: true
+    Gower:
+      categorical_features: []  # Example: [1, 2] for indices of categorical features
+    K-Prototypes:
+      gamma: 0.5
