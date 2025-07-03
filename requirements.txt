@@ -7,3 +7,7 @@ pyyaml==6.0.1
 pandas==2.2.2
 fastdtw==0.3.4
 networkx==3.3
+tslearn==0.6.4
+gower==0.1.2
+pyemd==1.0.0
+python-Levenshtein==0.27.1

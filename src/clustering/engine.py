@@ -1,8 +1,5 @@
-# File: src/clustering/engine.py
-
 import numpy as np
 from sklearn.metrics import silhouette_score
-from src.clustering.base_metric import DistanceMetric
 from src.clustering.distance_metrics import get_metric_by_name
 from src.utils.logger import get_logger
 
@@ -97,17 +94,25 @@ class KMeansEngine:
         # Final inertia calculation
         inertia = self._calculate_inertia(X, labels, centroids)
         
-        # Calculate silhouette score
+        # Robust silhouette calculation with multiple fallbacks
+        silhouette = -1  # Default failure value
         try:
-            # Handle custom metrics
-            if hasattr(self.metric, 'pairwise_distance'):
+            # First try: Use metric's custom implementation if available
+            if hasattr(self.metric, 'silhouette_score'):
+                silhouette = self.metric.silhouette_score(X, labels)
+            # Second try: Use precomputed matrix if available
+            elif hasattr(self.metric, 'pairwise_distance'):
                 dist_matrix = self.metric.pairwise_distance(X)
                 silhouette = silhouette_score(dist_matrix, labels, metric='precomputed')
+            # Third try: Use sklearn's native metrics
             else:
-                silhouette = silhouette_score(X, labels, metric='euclidean')
+                try:
+                    silhouette = silhouette_score(X, labels, metric=self.metric_name)
+                except:
+                    # Final fallback: Euclidean distance
+                    silhouette = silhouette_score(X, labels, metric='euclidean')
         except Exception as e:
-            logger.warning(f"Silhouette calculation failed: {str(e)}")
-            silhouette = -1  # Indicate failure
+            logger.warning(f"All silhouette methods failed: {str(e)}")
         
         return {
             "labels": labels,
@@ -117,3 +122,26 @@ class KMeansEngine:
             "n_iter": i + 1,
             "history": history
         }
+    
+def run_clustering(X, n_clusters=3, max_iter=100, metric_name="Euclidean", random_state=42):
+    """
+    Run K-Means clustering with specified parameters
+    
+    Args:
+        X: Input data matrix
+        n_clusters: Number of clusters
+        max_iter: Maximum iterations
+        metric_name: Name of distance metric
+        random_state: Random seed
+        
+    Returns:
+        Dictionary containing clustering results
+    """
+    engine = KMeansEngine(
+        n_clusters=n_clusters,
+        max_iter=max_iter,
+        metric_name=metric_name,
+        random_state=random_state,
+        X=X
+    )
+    return engine.fit_predict(X)
