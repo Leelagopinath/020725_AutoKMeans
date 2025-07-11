@@ -172,68 +172,51 @@ def main():
 
     # ─── Distance Measure Selection ─────────────────────────────────────────
     st.header("Distance Measure Selection")
-mode = st.radio(
-    "Mode:",
-    ["Manual", "AI Smart"],
-    index=0,
-    horizontal=True,
-    key="selection_mode"
-)
+    mode = st.radio(
+        "Mode:",
+        ["Manual", "AI Smart"],
+        index=0,
+        horizontal=True,
+        key="selection_mode"
+    )
 
-# Reset the other mode when switching
-if 'last_mode' not in st.session_state:
-    st.session_state.last_mode = mode
+    # Ensure metric_name persists across reruns
+    if "metric_name" not in st.session_state:
+        st.session_state.metric_name = None
 
-if st.session_state.last_mode != mode:
-    # Mode changed - reset the other mode's state
+    # 1) Manual Mode
     if mode == "Manual":
-        st.session_state.ai_metric = None
-    else:
-        st.session_state.manual_metric = None
-    st.session_state.last_mode = mode
-
-# Initialize session state variables
-if "manual_metric" not in st.session_state:
-    st.session_state.manual_metric = None
-if "ai_metric" not in st.session_state:
-    st.session_state.ai_metric = None
-
-# 1) Manual Mode - Simplified workflow
-if mode == "Manual":
-    st.markdown("### 🔧 Manual Metric Selection")
-    categories = [
+        st.markdown("### 🔧 Manual Metric Selection")
+        categories = [
         "Numeric/Vector Measures", "Binary/Categorical Measures",
         "Distribution/Histogram Measures", "Sequence/Time-Series Measures",
         "Mixed-Type Measures", "Graph & Structure Measures",
         "Universal/Compression-Based"
     ]
-    chosen_cat = st.selectbox(
-        "Select Metric Category:",
-        categories,
-        key="manual_category"
-    )
-    
-    metrics_list = get_supported_metrics(CATEGORY_MAPPING[chosen_cat])
-    st.session_state.manual_metric = st.selectbox(
-        "Select Metric:", 
-        metrics_list, 
-        key="manual_metric"
-    )
-    st.markdown(f"**Using:** {st.session_state.manual_metric}")
+        chosen_cat = st.selectbox(
+            "Select Metric Category:",
+            categories,
+            key="manual_category"
+        )
 
-# 2) AI Smart Mode - Complete workflow
-else:
-    st.markdown("### 🤖 AI Smart Method Selection")
-    detection = detect_data_type(X)
-    if isinstance(detection, tuple):
-        detected_label, confidence = detection
+        # The distance_selector expects exactly those keys
+        metrics_list = get_supported_metrics(CATEGORY_MAPPING[chosen_cat])
+        metric_name = st.selectbox("Select Metric:", metrics_list, key="manual_metric")
+        st.markdown(f"**Using:** {metric_name}")
+
+    # 2) AI Smart Mode
     else:
-        detected_label, confidence = detection, 1.0
+        st.markdown("### 🤖 AI Smart Method Selection")
+        detection = detect_data_type(X)
+        if isinstance(detection, tuple):
+            detected_label, confidence = detection
+        else:
+            detected_label, confidence = detection, 1.0
 
-    st.markdown(f"**Data Type Detected:** {detected_label}  •  {confidence*100:.0f}% confidence")
+        st.markdown(f"**Data Type Detected:** {detected_label}  •  {confidence*100:.0f}% confidence")
 
-    # Map detector labels to distance_selector keys
-    DETECT_MAP = {
+        # Map your detector labels to the exact distance_selector keys
+        DETECT_MAP = {
         "Numeric/Vector":             "Numeric / Vector",
         "Numeric/Vector Measures":    "Numeric / Vector",
         "Binary/Categorical":         "Binary / Categorical",
@@ -249,127 +232,106 @@ else:
         "Universal/Compression":      "Universal / Compression",
         "Universal/Compression-Based":"Universal / Compression",
     }
-    
-    internal_key = DETECT_MAP.get(detected_label)
-    if not internal_key:
-        st.error(f"Could not map '{detected_label}' to a known category")
-        st.stop()
-
-    candidates = get_supported_metrics(internal_key)
-    st.markdown(f"_{len(candidates)} methods will be tested_")
-    if not candidates:
-        st.error("No methods defined for this data type.")
-        st.stop()
-
-    # AI-specific parameters in sidebar
-    k  = st.sidebar.slider("Number of Clusters (K)", 2, 20, 3, key="ai_k")
-    mi = st.sidebar.slider("Max Iterations", 10, 1000, 100, key="ai_mi")
-
-    if st.button("🚀 Run AI Smart Selection", key="ai_run"):
-        with st.spinner("Benchmarking methods…"):
-            results = benchmark_category(X, internal_key, k, mi)
-
-        if not results:
-            st.error("No metrics available to benchmark for this data category.")
+        internal_key = DETECT_MAP.get(detected_label)
+        if not internal_key:
+            st.error(f"Could not map '{detected_label}' to a known category")
             st.stop()
 
-        # Show top 3 methods
-        top3 = sorted(results, key=lambda r: r["silhouette"], reverse=True)[:3]
-        st.success("✅ Analysis Complete!")
-        st.markdown(f"🏆 **Best Method:** `{top3[0]['metric']}` — {top3[0]['silhouette']:.3f}")
-        st.markdown("#### 📊 Top 3 Methods")
-        for idx, r in enumerate(top3, start=1):
-            st.write(f"{idx}. `{r['metric']}` — {r['silhouette']:.3f}")
+        candidates = get_supported_metrics(internal_key)
+        st.markdown(f"_{len(candidates)} methods will be tested_")
+        if not candidates:
+            st.error("No methods defined for this data type.")
+            st.stop()
 
-        # Let user pick one of those three
-        choice = st.selectbox(
-            "Select method for clustering:",
-            [r["metric"] for r in top3],
-            key="ai_choice"
-        )
-        st.session_state.ai_metric = choice
+        # Collect K and max_iter early so they appear in sidebar
+        k  = st.sidebar.slider("Number of Clusters (K)", 2, 20, 3, key="ai_k")
+        mi = st.sidebar.slider("Max Iterations",       10, 1000, 100, key="ai_mi")
 
-    # Show selected AI metric if available
-    if st.session_state.ai_metric:
-        st.markdown(f"**Selected AI Metric:** `{st.session_state.ai_metric}`")
-    else:
-        st.info("Click the button to automatically select the best metric.")
+        if st.button("🚀 Run AI Smart Selection", key="ai_run"):
+            with st.spinner("Benchmarking methods…"):
+                results = benchmark_category(X, internal_key, k, mi)
 
-# Get current metric based on active mode
-current_metric = st.session_state.manual_metric if mode == "Manual" else st.session_state.ai_metric
+            if not results:
+                st.error("No metrics available to benchmark for this data category.")
+                st.stop()
 
-# ─── Clustering Parameters & Execution ───────────────────────────────────
-st.header("Clustering Parameters")
-c1, c2 = st.columns(2)
-with c1:
-    n_clusters = st.slider(
-        "Number of Clusters (K)",
-        2, 20, 3,
-        key="cluster_k"
-    )
-with c2:
-    max_iter = st.slider(
-        "Max Iterations",
-        10, 1000, 100,
-        key="cluster_iter"
-    )
+            # Show top‐3
+            top3 = sorted(results, key=lambda r: r["silhouette"], reverse=True)[:3]
+            st.success("✅ Analysis Complete!")
+            st.markdown(f"🏆 **Best Method:** `{top3[0]['metric']}` — {top3[0]['silhouette']:.3f}")
+            st.markdown("#### 📊 Top 3 Methods")
+            for idx, r in enumerate(top3, start=1):
+                st.write(f"{idx}. `{r['metric']}` — {r['silhouette']:.3f}")
 
-# Only show Run button in AI mode when metric is selected
-# Manual mode runs automatically without button
-if mode == "AI Smart" and current_metric:
-    run_cluster = st.button("🚀 Run K-Means Clustering", key="cluster_run")
-elif mode == "Manual" and current_metric:
-    run_cluster = True
-else:
-    run_cluster = False
-
-# Execute clustering when:
-# - Manual mode has metric selected (automatic run)
-# - AI mode has metric + button pressed
-if run_cluster and current_metric:
-    with st.spinner(f"Clustering with {current_metric}…"):
-        try:
-            engine = KMeansEngine(
-                n_clusters=n_clusters,
-                max_iter=max_iter,
-                metric_name=current_metric,
-                X=X
+            # Let user pick one of those three
+            choice = st.selectbox(
+                "Select method for clustering:",
+                [r["metric"] for r in top3],
+                key="ai_choice"
             )
-            results = engine.fit_predict(X)
-            display_results(results, current_metric, n_clusters)
+            st.session_state.metric_name = choice
+        else:
+            st.info("Click the button to automatically select the best metric.")
 
-            # Visualization
-            if X.shape[1] >= 2:
-                v1, v2 = st.columns(2)
-                with v1:
-                    st.subheader("Cluster Visualization")
-                    st.pyplot(plot_clusters_2d(X, results["labels"], results["centroids"]))
-                with v2:
-                    st.subheader("Convergence History")
-                    st.pyplot(plot_convergence_history(results["history"]))
+    # Pull it out of session state
+    metric_name = st.session_state.metric_name
 
-            # Detailed Analysis
-            st.subheader("Detailed Analysis")
-            with st.expander("Cluster Assignments"):
-                for i in range(min(10, len(X))):
-                    row = X.iloc[i].tolist() if hasattr(X, "iloc") else X[i].tolist()
-                    st.write(f"Point {i+1}: {row} → Cluster {results['labels'][i]}")
-            with st.expander("Cluster Centroids"):
-                for idx, ctr in enumerate(results["centroids"], 1):
-                    st.write(f"Cluster {idx}: {ctr}")
+    # ─── Clustering Parameters & Execution ───────────────────────────────────
+    st.header("Clustering Parameters")
+    c1, c2 = st.columns(2)
+    with c1:
+        n_clusters = st.slider(
+            "Number of Clusters (K)",
+            2, 20, 3,
+            key="cluster_k"
+        )
+    with c2:
+        max_iter = st.slider(
+            "Max Iterations",
+            10, 1000, 100,
+            key="cluster_iter"
+        )
 
-            export_results(X, results)
+    if metric_name:
+        if st.button("🚀 Run K-Means Clustering", key="cluster_run"):
+            with st.spinner(f"Clustering with {metric_name}…"):
+                try:
+                    engine  = KMeansEngine(
+                        n_clusters=n_clusters,
+                        max_iter=max_iter,
+                        metric_name=metric_name,
+                        X=X
+                    )
+                    results = engine.fit_predict(X)
+                    display_results(results, metric_name, n_clusters)
 
-        except Exception as e:
-            st.error(f"Clustering failed: {e}")
-            logger.exception(e)
+                    # Visualization
+                    if X.shape[1] >= 2:
+                        v1, v2 = st.columns(2)
+                        with v1:
+                            st.subheader("Cluster Visualization")
+                            st.pyplot(plot_clusters_2d(X, results["labels"], results["centroids"]))
+                        with v2:
+                            st.subheader("Convergence History")
+                            st.pyplot(plot_convergence_history(results["history"]))
 
-# Show warnings if no metric selected
-if not current_metric:
-    if mode == "Manual":
-        st.warning("Please select a distance metric for Manual mode clustering")
+                    # Detailed Analysis
+                    st.subheader("Detailed Analysis")
+                    with st.expander("Cluster Assignments"):
+                        for i in range(min(10, len(X))):
+                            row = X.iloc[i].tolist() if hasattr(X, "iloc") else X[i].tolist()
+                            st.write(f"Point {i+1}: {row} → Cluster {results['labels'][i]}")
+                    with st.expander("Cluster Centroids"):
+                        for idx, ctr in enumerate(results["centroids"], 1):
+                            st.write(f"Cluster {idx}: {ctr}")
+
+                    export_results(X, results)
+
+                except Exception as e:
+                    st.error(f"Clustering failed: {e}")
+                    logger.exception(e)
     else:
-        st.warning("Please run AI Smart Selection and choose a metric")
+        st.warning("Please select a distance metric before running clustering.")
 
 
 if __name__ == "__main__":
