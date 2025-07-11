@@ -5,9 +5,17 @@ from scipy.spatial.distance import euclidean, cityblock, chebyshev, braycurtis, 
 from scipy.stats import pearsonr
 from src.clustering.base_metric import DistanceMetric
 
+
 class Euclidean(DistanceMetric):
-    def __call__(self, x, y):
-        return euclidean(x, y)
+    def __init__(self, X=None):
+        """Euclidean distance doesn't need dataset initialization"""
+        pass
+    
+    def __call__(self, x: np.ndarray, y: np.ndarray) -> float:
+        return np.linalg.norm(x - y)
+    
+    def centroid(self, points: np.ndarray) -> np.ndarray:
+        return np.mean(points, axis=0)
 
 class Manhattan(DistanceMetric):
     def __call__(self, x, y):
